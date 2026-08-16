@@ -27,9 +27,15 @@ public class SpawnerMinecartModule implements PurpurExtrasModule, Listener {
         return PurpurExtras.getPurpurConfig().getBoolean("settings.spawner-minecart.enabled", false);
     }
 
-    @EventHandler(priority = EventPriority.NORMAL, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
         if (event.getHand() != EquipmentSlot.HAND) {
+            return;
+        }
+
+        Player player = event.getPlayer();
+
+        if (player.getGameMode() == GameMode.SPECTATOR) {
             return;
         }
 
@@ -37,9 +43,7 @@ public class SpawnerMinecartModule implements PurpurExtrasModule, Listener {
             return;
         }
 
-        Player player = event.getPlayer();
         ItemStack item = player.getInventory().getItemInMainHand();
-
         if (item.getType() == Material.AIR) {
             return;
         }
@@ -56,7 +60,7 @@ public class SpawnerMinecartModule implements PurpurExtrasModule, Listener {
 
         spawnerMinecart.setSpawnedType(spawnType);
 
-        if (player.getGameMode() != GameMode.CREATIVE && player.getGameMode() != GameMode.SPECTATOR) {
+        if (player.getGameMode() != GameMode.CREATIVE) {
             item.subtract(1);
         }
 
@@ -64,13 +68,8 @@ public class SpawnerMinecartModule implements PurpurExtrasModule, Listener {
     }
 
     private EntityType getEntityTypeFromEgg(ItemStack item) {
-        String materialName = item.getType().name();
-        if (materialName.endsWith("_SPAWN_EGG")) {
-            String entityName = materialName.substring(0, materialName.length() - 10);
-            try {
-                return EntityType.valueOf(entityName);
-            } catch (IllegalArgumentException ignored) {
-            }
+        if (item == null || item.getType() == Material.AIR) {
+            return null;
         }
 
         if (item.getItemMeta() instanceof SpawnEggMeta eggMeta) {
@@ -79,6 +78,15 @@ public class SpawnerMinecartModule implements PurpurExtrasModule, Listener {
             }
             if (eggMeta.getSpawnedEntity() != null) {
                 return eggMeta.getSpawnedEntity().getEntityType();
+            }
+        }
+
+        String materialName = item.getType().name();
+        if (materialName.endsWith("_SPAWN_EGG")) {
+            String entityName = materialName.substring(0, materialName.length() - 10);
+            try {
+                return EntityType.valueOf(entityName);
+            } catch (IllegalArgumentException ignored) {
             }
         }
 
