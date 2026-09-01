@@ -89,11 +89,17 @@ public class JoinFullServerModule implements PurpurExtrasModule, Listener {
         return getUUIDList().contains(uuid.toString());
     }
 
-    private List<String> getUUIDList() {
+    public List<String> getUUIDList() {
         if (this.uuidConfig == null) {
             return new ArrayList<>();
         }
         return new ArrayList<>(this.uuidConfig.getStringList("uuids"));
+    }
+
+    public synchronized void reload() {
+        if (this.file != null) {
+            this.uuidConfig = YamlConfiguration.loadConfiguration(this.file);
+        }
     }
 
     private boolean saveConfig() {
