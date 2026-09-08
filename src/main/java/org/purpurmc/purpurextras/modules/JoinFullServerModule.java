@@ -17,14 +17,21 @@ import java.util.UUID;
 
 public class JoinFullServerModule implements PurpurExtrasModule, Listener {
 
+    private static JoinFullServerModule instance;
+
     private YamlConfiguration uuidConfig;
     private File file;
 
     @Override
     public void enable() {
+        instance = this;
         PurpurExtras plugin = PurpurExtras.getInstance();
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
         loadUUIDFile(plugin);
+    }
+
+    public static JoinFullServerModule getInstance() {
+        return instance;
     }
 
     @Override
