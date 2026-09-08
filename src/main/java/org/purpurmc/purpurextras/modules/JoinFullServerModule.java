@@ -1,33 +1,40 @@
 package org.purpurmc.purpurextras.modules;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
 import io.papermc.paper.event.player.PlayerServerFullCheckEvent;
-import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.purpurmc.purpurextras.PurpurExtras;
 
 import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
 public class JoinFullServerModule implements PurpurExtrasModule, Listener {
 
     private static JoinFullServerModule instance;
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    private YamlConfiguration uuidConfig;
     private File file;
+    private List<JFSUser> users = new ArrayList<>();
+
+    public record JFSUser(String uuid, String name) {}
 
     @Override
     public void enable() {
         instance = this;
         PurpurExtras plugin = PurpurExtras.getInstance();
         plugin.getServer().getPluginManager().registerEvents(this, plugin);
-        loadUUIDFile(plugin);
+        loadJSONFile(plugin);
     }
 
     public static JoinFullServerModule getInstance() {
@@ -39,83 +46,77 @@ public class JoinFullServerModule implements PurpurExtrasModule, Listener {
         return PurpurExtras.getPurpurConfig().getBoolean("settings.join-full-server.enabled", false);
     }
 
-    private void loadUUIDFile(PurpurExtras plugin) {
-        this.file = new File(plugin.getDataFolder(), "jfs_uuids.yml");
-        boolean isNewFile = false;
+    private void loadJSONFile(PurpurExtras plugin) {
+        this.file = new File(plugin.getDataFolder(), "jfslist.json");
 
-        try {
-            if (file.getParentFile() != null && !file.getParentFile().exists()) {
-                Files.createDirectories(file.getParentFile().toPath());
+        if (!file.exists()) {
+            File parent = file.getParentFile();
+            if (parent != null && !parent.exists()) {
+                try {
+                    Files.createDirectories(parent.toPath());
+                } catch (IOException e) {
+                    plugin.getLogger().severe("Could not create directories for jfslist.json");
+                }
             }
-            if (!file.exists()) {
-                Files.createFile(file.toPath());
-                isNewFile = true;
-            }
+            saveJSON();
+            return;
+        }
+
+        try (FileReader reader = new FileReader(file)) {
+            Type listType = new TypeToken<List<JFSUser>>() {}.getType();
+            List<JFSUser> loaded = GSON.fromJson(reader, listType);
+            this.users = loaded != null ? loaded : new ArrayList<>();
         } catch (IOException e) {
-            plugin.getLogger().severe("Could not create the JFS UUIDs file.");
-        }
-
-        this.uuidConfig = YamlConfiguration.loadConfiguration(file);
-
-        if (isNewFile) {
-            this.uuidConfig.set("uuids", Collections.emptyList());
-            saveConfig();
+            plugin.getLogger().severe("Could not read jfslist.json");
+            this.users = new ArrayList<>();
         }
     }
 
-    public synchronized boolean addUUID(UUID uuid) {
+    public synchronized boolean addUser(UUID uuid, String name) {
         if (uuid == null) return false;
-        List<String> uuids = getUUIDList();
         String uuidStr = uuid.toString();
 
-        if (uuids.contains(uuidStr)) {
-            return false;
+        for (JFSUser user : users) {
+            if (user.uuid().equalsIgnoreCase(uuidStr)) {
+                return false;
+            }
         }
 
-        uuids.add(uuidStr);
-        this.uuidConfig.set("uuids", uuids);
-        return saveConfig();
+        users.add(new JFSUser(uuidStr, name != null ? name : "Unknown"));
+        return saveJSON();
     }
 
-    public synchronized boolean removeUUID(UUID uuid) {
+    public synchronized boolean removeUser(UUID uuid) {
         if (uuid == null) return false;
-        List<String> uuids = getUUIDList();
         String uuidStr = uuid.toString();
 
-        if (!uuids.contains(uuidStr)) {
-            return false;
+        boolean removed = users.removeIf(user -> user.uuid().equalsIgnoreCase(uuidStr));
+        if (removed) {
+            saveJSON();
         }
-
-        uuids.remove(uuidStr);
-        this.uuidConfig.set("uuids", uuids);
-        return saveConfig();
+        return removed;
     }
 
     public boolean isAllowed(UUID uuid) {
         if (uuid == null) return false;
-        return getUUIDList().contains(uuid.toString());
+        String uuidStr = uuid.toString();
+        return users.stream().anyMatch(user -> user.uuid().equalsIgnoreCase(uuidStr));
     }
 
-    public List<String> getUUIDList() {
-        if (this.uuidConfig == null) {
-            return new ArrayList<>();
-        }
-        return new ArrayList<>(this.uuidConfig.getStringList("uuids"));
+    public List<JFSUser> getUsers() {
+        return new ArrayList<>(this.users);
     }
 
     public synchronized void reload() {
-        if (this.file != null) {
-            this.uuidConfig = YamlConfiguration.loadConfiguration(this.file);
-        }
+        loadJSONFile(PurpurExtras.getInstance());
     }
 
-    private boolean saveConfig() {
-        if (this.uuidConfig == null || this.file == null) return false;
-        try {
-            this.uuidConfig.save(this.file);
+    private boolean saveJSON() {
+        try (FileWriter writer = new FileWriter(file)) {
+            GSON.toJson(users, writer);
             return true;
         } catch (IOException e) {
-            PurpurExtras.getInstance().getLogger().severe("Could not save the JFS UUIDs file.");
+            PurpurExtras.getInstance().getLogger().severe("Could not save jfslist.json");
             return false;
         }
     }
